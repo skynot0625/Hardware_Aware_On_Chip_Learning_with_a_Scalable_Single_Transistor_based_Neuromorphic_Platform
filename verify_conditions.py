@@ -1,4 +1,4 @@
-"""Exercise all eight original network/learning-condition combinations."""
+"""Exercise all twelve architecture/learning-condition combinations."""
 
 import gc
 import random
@@ -11,16 +11,19 @@ from models import PreActResNet18, SHDELife
 def main() -> None:
     torch.set_num_threads(2)
     for device in ["cpu"] + (["cuda"] if torch.cuda.is_available() else []):
-        for dataset in ["cifar10", "shd"]:
+        for architecture in ["resnet18", "arch1", "arch2"]:
             for elife in [False, True]:
                 for sg in ["sg", "csg"]:
                     torch.manual_seed(42)
                     random.seed(42)
-                    if dataset == "cifar10":
+                    if architecture == "resnet18":
                         model = PreActResNet18(scale=4, surrogate=sg, elife=elife)
                         sample = torch.randn(2, 3, 32, 32)
                     else:
-                        model = SHDELife(surrogate=sg, elife=elife)
+                        model = SHDELife(surrogate=sg, elife=elife, architecture=architecture)
+                        assert hasattr(model, "fb0") == (architecture == "arch2")
+                        assert hasattr(model, "cTRACE") == elife
+                        assert not hasattr(model, "cTRACE_1")
                         sample = torch.poisson(torch.full((2, 20, 1, 700), 2.0))
                     model = model.to(device)
                     sample = sample.to(device)
@@ -39,7 +42,7 @@ def main() -> None:
                     assert any(torch.count_nonzero(g) for g in grads)
                     optimizer.step()
                     assert any(not torch.equal(a, b) for a, b in zip(before, model.parameters()))
-                    print(f"PASS {device} {dataset} {sg} elife={elife} {type(model).__name__}", flush=True)
+                    print(f"PASS {device} {architecture} {sg} elife={elife} {type(model).__name__}", flush=True)
                     del model, optimizer, before, grads, output, loss
                     gc.collect()
     print("PASS original model forward/backward, state reset and optimizer updates")

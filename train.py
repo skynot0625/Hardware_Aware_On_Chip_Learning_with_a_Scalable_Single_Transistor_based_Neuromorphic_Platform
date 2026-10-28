@@ -48,6 +48,7 @@ def run_epoch(model: nn.Module, loader: DataLoader, optimizer: torch.optim.Optim
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", choices=["cifar10", "shd"], default="cifar10")
+    parser.add_argument("--architecture", choices=["resnet18", "arch1", "arch2"], default=None)
     parser.add_argument("--surrogate", choices=["sg", "csg"], default="csg")
     parser.add_argument("--elife", action="store_true", help="enable backward eligibility in either network")
     parser.add_argument("--data-dir", type=Path, default=Path("data"))
@@ -62,6 +63,9 @@ def main() -> None:
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--limit", type=int, default=None, help="limit each split for a smoke run only")
     args = parser.parse_args()
+    args.architecture = args.architecture or ("arch2" if args.dataset == "shd" else "resnet18")
+    if (args.dataset == "cifar10") != (args.architecture == "resnet18"):
+        parser.error("CIFAR-10 uses resnet18; SHD uses arch1 or arch2")
     args.epochs = args.epochs if args.epochs is not None else (100 if args.dataset == "shd" else 300)
     args.scale = args.scale if args.scale is not None else (1024 if args.dataset == "shd" else 64)
     args.lr = args.lr if args.lr is not None else (1e-3 if args.dataset == "shd" else 1e-4)
@@ -89,7 +93,8 @@ def main() -> None:
     loaders = [DataLoader(split, batch_size=args.batch_size, shuffle=index == 0,
                           num_workers=args.workers) for index, split in enumerate(splits)]
     surrogate = args.surrogate
-    model = (SHDELife(scale=args.scale, surrogate=surrogate, elife=args.elife) if args.dataset == "shd" else
+    model = (SHDELife(scale=args.scale, surrogate=surrogate, elife=args.elife,
+                     architecture=args.architecture) if args.dataset == "shd" else
              PreActResNet18(scale=args.scale, elife=args.elife, surrogate=surrogate)).to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)

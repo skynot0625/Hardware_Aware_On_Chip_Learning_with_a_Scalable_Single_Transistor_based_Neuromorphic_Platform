@@ -1,4 +1,4 @@
-"""Re-export original class text, without AST rewriting or architecture refactoring."""
+"""Export original class text with explicit dead-code removal and dataset headers."""
 
 import argparse
 import ast
@@ -20,40 +20,101 @@ def portable(text: str) -> str:
     return text.replace('.to("cuda" if torch.cuda.is_available() else "cpu")', '')
 
 
+def prune(text: str, attributes: set[str], locals_: set[str]) -> str:
+    """Remove only enumerated dead statements; keep surviving source lines intact."""
+    lines = text.splitlines()
+    removed: set[int] = set()
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, (ast.Assign, ast.Expr)):
+            continue
+        dead = any(
+            (isinstance(part, ast.Attribute) and isinstance(part.value, ast.Name)
+             and part.value.id == "self" and part.attr in attributes)
+            or (isinstance(part, ast.Name) and part.id in locals_)
+            for part in ast.walk(node)
+        )
+        if dead:
+            removed.update(range(node.lineno - 1, node.end_lineno))
+    result = [line.rstrip() for index, line in enumerate(lines)
+              if index not in removed and not line.lstrip().startswith("#")]
+    return "\n".join(result).strip() + "\n"
+
+
+def clean_shd(text: str, elife: bool, feedback: bool) -> str:
+    attributes = {"fb", "LIF_fb", "LIF_rec", "eLIF_fb_1", "eLIF_fb_2",
+                  "time_resolution", "ethreshold", "ethreshold1", "ethreshold2",
+                  "ethreshold3", "ethreshold4"}
+    attributes.update(f"cTRACE_{i}" for i in range(1, 5))
+    locals_ = {"fb_U", "fb_S"}
+    locals_.update(f"h{i}_e{kind}" for i in range(1, 5) for kind in ("U", "S"))
+    locals_.update(f"eLIF_fb_{suffix}" for suffix in ("U1", "U2", "S1", "S2", "S1_prev", "S2_prev"))
+    if not feedback:
+        attributes.update(f"fb{i}" for i in range(4))
+    if not elife:
+        attributes.add("cTRACE")
+        locals_.update({"eU", "eS"})
+    for i in range(1, 6):
+        if not elife or (i == 5 and not feedback):
+            attributes.update({f"eLIF_{i}_1", f"eLIF_{i}_2"})
+            locals_.update(f"eLIF_h{i}_{suffix}" for suffix in ("U1", "U2", "S1", "S2", "S1_prev", "S2_prev"))
+    return prune(text, attributes, locals_)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--solo-dir", type=Path, required=True)
     parser.add_argument("--analog-model", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=Path("models"))
     args = parser.parse_args()
-    header = ('# Source-preserving export; see SOURCE_PROVENANCE.json and export_originals.py.\n'
-              '# noqa: SIZE_OK - original research classes retained verbatim for review.\n'
-              'import random\nimport torch\nimport torch.nn as nn\n'
-              'import torch.nn.init as init\nfrom . import surrogate\n\n\n')
-    helpers = ["LIF_Node", "cTRACE_Node", "LI_Node"]
-    for filename in ["model.py", "model_current.py", "model_current_eLIFE.py"]:
-        names = helpers + (["eLIF_Node_SOLOplus"] if "eLIFE" in filename else [])
+    header = ('# noqa: SIZE_OK - retain original explicit research forward methods.\n'
+              'import torch\nimport torch.nn as nn\nfrom . import surrogate\n\n\n')
+    resnet_data = ('# Dataset: CIFAR-10 in this release; input [B,3,32,32], output [B,10].\n'
+                   '# Paper ResNet family: CIFAR-10/100, CIFAR10DVS, DVS128Gesture.\n'
+                   '# Event-dataset frontends and benchmark runners are not included here.\n')
+    resnet_names = {"model.py": "model_Resnet18_SG.py",
+                    "model_current.py": "model_Resnet_cSG.py",
+                    "model_current_eLIFE.py": "model_Resenet_cSG_eLIFE.py"}
+    for filename, destination in resnet_names.items():
+        names = ["LIF_Node"] + (["cTRACE_Node", "eLIF_Node_SOLOplus"] if "eLIFE" in filename else [])
         body = portable(extract(args.solo_dir / filename, names + ["SOLO_PreactResNet18"]))
         if "eLIFE" in filename:
             body = body.replace('        LIF_U = I_in\n', '')
-        (args.output / filename).write_text(header + body)
+        body = prune(body, {"LI", "eLIF_1_1", "eLIF_1_2"}, {"c1_mem", "c1_spike"})
+        (args.output / destination).write_text(resnet_data + header + body)
         if "eLIFE" in filename:
             sg = body.replace('surrogate.HeavisideCurrentBoxcarCall', 'surrogate.HeavisideBoxcarCall')
             sg = sg.replace('self.surrogate_function(LIF_U, I_in)', 'self.surrogate_function(LIF_U)')
-            (args.output / "model_eLIFE.py").write_text(header + sg)
+            (args.output / "model_Resnet_SG_eLIFE.py").write_text(resnet_data + header + sg)
     shd_helpers = ["LIF_Node_SOLOplus", "LIF_current_Node_SOLOplus", "htLIF_Node_SOLOplus",
                    "htLIF_current_Node_SOLOplus", "cTRACE_Node_SOLOplus", "eLIF_Node_SOLOplus"]
-    classes = ["mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3",
-               "mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3",
-               "mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure",
-               "mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_pure"]
-    body = portable(extract(args.analog_model, shd_helpers + classes))
-    body = body.replace('AnalogLinear(', 'nn.Linear(').replace(', rpu_config=rpu_config', '')
-    (args.output / "model_shd.py").write_text(header + body)
-    surrogate = (args.solo_dir / "surrogate.py").read_text()
+    nodes = prune(portable(extract(args.analog_model, shd_helpers)), set(), set())
+    (args.output / "shd_nodes.py").write_text('# Shared neuron helpers for the SHD-specialized Arch1/Arch2 examples.\n' + header + nodes)
+    for architecture in (1, 2):
+        body = ''
+        for sg in (False, True):
+            for elife in (False, True):
+                name = ('mlp4_SOLOplus_' + ('' if sg else 'current_')
+                        + 'smnist_RES_RSNN_ht_res_fb3' + ('_x' if architecture == 1 else '')
+                        + ('' if elife else '_pure'))
+                source = portable(extract(args.analog_model, [name]))
+                source = source.replace('AnalogLinear(', 'nn.Linear(').replace(', rpu_config=rpu_config', '')
+                source = source.replace('        rpu_config = None,\n', '')
+                body += clean_shd(source, elife, architecture == 2) + '\n\n'
+        data_header = (f'# Architecture {architecture}: recurrent/residual network '
+                       + ('without feedback.\n' if architecture == 1 else 'with four output-feedback projections.\n')
+                       + '# Dataset: SHD; input [B,20,700] or [B,20,1,700], output [B,20].\n'
+                       + '# Paper small-network family: F-MNIST, S-MNIST, SHD. This file is SHD-specialized.\n')
+        imports = ('import random\nimport torch.nn.init as init\nfrom .shd_nodes import (\n'
+                   + ''.join(f'    {name},\n' for name in shd_helpers) + ')\n\n')
+        (args.output / f"model_Arch{architecture}.py").write_text(data_header + header + imports + body.rstrip() + '\n')
+    surrogate_names = ["Boxcar", "HeavisideBoxcarCall", "cTRACEClamp", "cTraceSwitch",
+                       "CurrentBoxcar", "HeavisideCurrentBoxcarCall", "eLIF",
+                       "Heaviside_eLIFCall", "eLIF_fc"]
+    surrogate = extract(args.solo_dir / "surrogate.py", surrogate_names)
     surrogate = surrogate.replace('        return grad_input, None, None\n\n\nclass Heaviside_eLIFCall',
                                   '        return grad_input, None\n\n\nclass Heaviside_eLIFCall')
-    (args.output / "surrogate.py").write_text(surrogate)
+    surrogate = prune(surrogate, set(), set())
+    (args.output / "surrogate.py").write_text('import torch\nimport torch.nn as nn\n\n' + surrogate)
     sources = [args.solo_dir / name for name in ["model.py", "model_current.py", "model_current_eLIFE.py", "surrogate.py"]]
     sources.append(args.analog_model)
     manifest = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
