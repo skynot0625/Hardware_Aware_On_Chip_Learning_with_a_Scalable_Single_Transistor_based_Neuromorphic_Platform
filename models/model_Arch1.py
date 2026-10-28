@@ -330,7 +330,7 @@ class Arch1_cSG_eLIFE(nn.Module):
         x = x.squeeze(2)       # (32, 20, 1, 700) → (32, 20, 700)
         x = x.permute(1, 0, 2) # (32, 20, 700) → (20, 32, 700)
 
-        eP = eS = torch.zeros(batch_size, 700, device=self.device)
+        eP = torch.zeros(batch_size, 700, device=self.device)
         U = S = torch.zeros(batch_size, 1024, device=self.device)
         h1_U = h1_S = torch.zeros(batch_size, 1024, device=self.device)
         h2_U = h2_S = torch.zeros(batch_size, 1024, device=self.device)
@@ -410,31 +410,31 @@ class Arch1_cSG_eLIFE(nn.Module):
 
 
         eP = self.eP(eP.detach(), x[last_step])
-        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
+        I_in = surrogate.eP_switch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
         U, S = self.LIF(U.detach(), S.detach(), I_in)
 
         eLIF_h1_U1, eLIF_h1_S1 = self.eLIF_1_1(eLIF_h1_U1.detach(), eLIF_h1_S1.detach(), S * 1 + eLIF_h1_S2_prev.detach() * 1)
         eLIF_h1_U2, eLIF_h1_S2 = self.eLIF_1_2(eLIF_h1_U2.detach(), eLIF_h1_S2.detach(), eLIF_h1_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc1(S).detach(), self.fc1(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
-        I_in_rec = surrogate.cTraceSwitch.apply(self.rec(h1_S).detach(), self.rec(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
+        I_in = surrogate.eP_switch.apply(self.fc1(S).detach(), self.fc1(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
+        I_in_rec = surrogate.eP_switch.apply(self.rec(h1_S).detach(), self.rec(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
         h1_U, h1_S = self.LIF1(h1_U.detach(), h1_S.detach(), I_in + I_in_rec)
 
         eLIF_h2_U1, eLIF_h2_S1 = self.eLIF_2_1(eLIF_h2_U1.detach(), eLIF_h2_S1.detach(), h1_S * 1 + eLIF_h2_S2_prev.detach() * 1)
         eLIF_h2_U2, eLIF_h2_S2 = self.eLIF_2_2(eLIF_h2_U2.detach(), eLIF_h2_S2.detach(), eLIF_h2_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc2(h1_S).detach(), self.fc2(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
-        I_in_skip = surrogate.cTraceSwitch.apply(self.skip(S).detach(), self.skip(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
+        I_in = surrogate.eP_switch.apply(self.fc2(h1_S).detach(), self.fc2(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
+        I_in_skip = surrogate.eP_switch.apply(self.skip(S).detach(), self.skip(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
         h2_U, h2_S = self.LIF2(h2_U.detach(), h2_S.detach(), I_in + I_in_skip)
 
         eLIF_h3_U1, eLIF_h3_S1 = self.eLIF_3_1(eLIF_h3_U1.detach(), eLIF_h3_S1.detach(), h2_S * 1 + eLIF_h3_S2_prev.detach() * 1)
         eLIF_h3_U2, eLIF_h3_S2 = self.eLIF_3_2(eLIF_h3_U2.detach(), eLIF_h3_S2.detach(), eLIF_h3_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc3(h2_S).detach(), self.fc3(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
-        I_in_rec = surrogate.cTraceSwitch.apply(self.rec2rec(h3_S).detach(), self.rec2rec(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
+        I_in = surrogate.eP_switch.apply(self.fc3(h2_S).detach(), self.fc3(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
+        I_in_rec = surrogate.eP_switch.apply(self.rec2rec(h3_S).detach(), self.rec2rec(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
         h3_U, h3_S = self.LIF3(h3_U.detach(), h3_S.detach(), I_in + I_in_rec)
 
         eLIF_h4_U1, eLIF_h4_S1 = self.eLIF_4_1(eLIF_h4_U1, eLIF_h4_S1, h3_S * 1 + eLIF_h4_S2_prev * 1)
         eLIF_h4_U2, eLIF_h4_S2 = self.eLIF_4_2(eLIF_h4_U2, eLIF_h4_S2, eLIF_h4_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.rec2fc(h3_S).detach(), self.rec2fc(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
-        I_in_skip = surrogate.cTraceSwitch.apply(self.rec_skip(h2_S).detach(), self.rec_skip(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
+        I_in = surrogate.eP_switch.apply(self.rec2fc(h3_S).detach(), self.rec2fc(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
+        I_in_skip = surrogate.eP_switch.apply(self.rec_skip(h2_S).detach(), self.rec_skip(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
         out_U, out_S = self.LIF_out(out_U.detach(), out_S.detach(), I_in + I_in_skip)
 
 
@@ -772,7 +772,7 @@ class Arch1_SG_eLIFE(nn.Module):
         x = x.squeeze(2)       # (32, 20, 1, 700) → (32, 20, 700)
         x = x.permute(1, 0, 2) # (32, 20, 700) → (20, 32, 700)
 
-        eP = eS = torch.zeros(batch_size, 700, device=self.device)
+        eP = torch.zeros(batch_size, 700, device=self.device)
         U = S = torch.zeros(batch_size, 1024, device=self.device)
         h1_U = h1_S = torch.zeros(batch_size, 1024, device=self.device)
         h2_U = h2_S = torch.zeros(batch_size, 1024, device=self.device)
@@ -859,31 +859,31 @@ class Arch1_SG_eLIFE(nn.Module):
 
 
         eP = self.eP(eP.detach(), x[last_step])
-        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
+        I_in = surrogate.eP_switch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
         U, S = self.LIF(U.detach(), S.detach(), I_in)
 
         eLIF_h1_U1, eLIF_h1_S1 = self.eLIF_1_1(eLIF_h1_U1.detach(), eLIF_h1_S1.detach(), S * 1 + eLIF_h1_S2_prev.detach() * 1)
         eLIF_h1_U2, eLIF_h1_S2 = self.eLIF_1_2(eLIF_h1_U2.detach(), eLIF_h1_S2.detach(), eLIF_h1_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc1(S).detach(), self.fc1(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
-        I_in_rec = surrogate.cTraceSwitch.apply(self.rec(h1_S).detach(), self.rec(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
+        I_in = surrogate.eP_switch.apply(self.fc1(S).detach(), self.fc1(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
+        I_in_rec = surrogate.eP_switch.apply(self.rec(h1_S).detach(), self.rec(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
         h1_U, h1_S = self.LIF1(h1_U.detach(), h1_S.detach(), I_in + I_in_rec)
 
         eLIF_h2_U1, eLIF_h2_S1 = self.eLIF_2_1(eLIF_h2_U1.detach(), eLIF_h2_S1.detach(), h1_S * 1 + eLIF_h2_S2_prev.detach() * 1)
         eLIF_h2_U2, eLIF_h2_S2 = self.eLIF_2_2(eLIF_h2_U2.detach(), eLIF_h2_S2.detach(), eLIF_h2_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc2(h1_S).detach(), self.fc2(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
-        I_in_skip = surrogate.cTraceSwitch.apply(self.skip(S).detach(), self.skip(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
+        I_in = surrogate.eP_switch.apply(self.fc2(h1_S).detach(), self.fc2(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_S)))
+        I_in_skip = surrogate.eP_switch.apply(self.skip(S).detach(), self.skip(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, S)))
         h2_U, h2_S = self.LIF2(h2_U.detach(), h2_S.detach(), I_in + I_in_skip)
 
         eLIF_h3_U1, eLIF_h3_S1 = self.eLIF_3_1(eLIF_h3_U1.detach(), eLIF_h3_S1.detach(), h2_S * 1 + eLIF_h3_S2_prev.detach() * 1)
         eLIF_h3_U2, eLIF_h3_S2 = self.eLIF_3_2(eLIF_h3_U2.detach(), eLIF_h3_S2.detach(), eLIF_h3_S1_prev.detach() * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc3(h2_S).detach(), self.fc3(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
-        I_in_rec = surrogate.cTraceSwitch.apply(self.rec2rec(h3_S).detach(), self.rec2rec(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
+        I_in = surrogate.eP_switch.apply(self.fc3(h2_S).detach(), self.fc3(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
+        I_in_rec = surrogate.eP_switch.apply(self.rec2rec(h3_S).detach(), self.rec2rec(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
         h3_U, h3_S = self.LIF3(h3_U.detach(), h3_S.detach(), I_in + I_in_rec)
 
         eLIF_h4_U1, eLIF_h4_S1 = self.eLIF_4_1(eLIF_h4_U1, eLIF_h4_S1, h3_S * 1 + eLIF_h4_S2_prev * 1)
         eLIF_h4_U2, eLIF_h4_S2 = self.eLIF_4_2(eLIF_h4_U2, eLIF_h4_S2, eLIF_h4_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.rec2fc(h3_S).detach(), self.rec2fc(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
-        I_in_skip = surrogate.cTraceSwitch.apply(self.rec_skip(h2_S).detach(), self.rec_skip(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
+        I_in = surrogate.eP_switch.apply(self.rec2fc(h3_S).detach(), self.rec2fc(surrogate.eLIF_fc.apply(eLIF_h4_S1, eLIF_h4_S2, h3_S)))
+        I_in_skip = surrogate.eP_switch.apply(self.rec_skip(h2_S).detach(), self.rec_skip(surrogate.eLIF_fc.apply(eLIF_h3_S1, eLIF_h3_S2, h2_S)))
         out_U, out_S = self.LIF_out(out_U.detach(), out_S.detach(), I_in + I_in_skip)
 
 

@@ -40,10 +40,15 @@ def main() -> None:
     layer = torch.nn.Linear(2, 1, bias=False)
     spike = torch.tensor([[0., 1.]], requires_grad=True)
     eligible = spike + torch.tensor([[1., 0.]])
-    result = surrogate.cTraceSwitch.apply(layer(spike).detach(), layer(eligible))
+    result = surrogate.eP_switch.apply(layer(spike).detach(), layer(eligible))
     torch.testing.assert_close(result, layer(spike))
     result.sum().backward()
     torch.testing.assert_close(layer.weight.grad, eligible.detach())
+    potential = torch.tensor([0.5, 2.0], requires_grad=True)
+    clamped = surrogate.eP.apply(potential, 1.0)
+    torch.testing.assert_close(clamped, torch.tensor([0.5, 1.0]))
+    clamped.sum().backward()
+    torch.testing.assert_close(potential.grad, torch.ones(2))
     print("PASS original SG/cSG gradients, clone leak/reset/accumulation, OR and eligibility gradients")
 
 

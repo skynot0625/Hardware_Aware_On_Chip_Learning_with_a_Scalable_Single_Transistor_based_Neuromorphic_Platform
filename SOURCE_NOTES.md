@@ -60,6 +60,12 @@ potential). `eP_Node` and `eP_Node_SOLOplus` retain the original trace equations
 this is a naming change, not removal of the input-gradient path. ResNet filenames
 uniformly use `model_ResNet18_*`.
 
+In `surrogate.py`, `eP` names the original potential clamp and `eP_switch`
+selects ordinary forward values with eligibility-path gradients. `eLIF_fc`
+is used to combine main and clone spikes by OR, with gradients passed only
+to the main spike. Unused `eS` initialization aliases and unused tensors saved
+by `eLIF.forward` have been removed.
+
 ## Retained source conventions
 
 - The SHD loop uses `range(init_step, last_step - 1)` and skips the penultimate

@@ -35,7 +35,7 @@ class eP_Node(nn.Module):
 
     def forward(self, mem: torch.Tensor, spk_in: torch.Tensor):
         mem =  self.eP_decay * mem.detach() + spk_in
-        mem = surrogate.ePClamp.apply(mem, self.clamp_value)
+        mem = surrogate.eP.apply(mem, self.clamp_value)
 
         return mem
 
@@ -404,7 +404,7 @@ class SOLO_PreactResNet18(nn.Module):
         boost1 = torch.zeros(batch_size, self.num_classes, device=self.device)
         acc_mem = torch.zeros(batch_size, self.num_classes, device=self.device)
 
-        eP = eS = torch.zeros(batch_size, 3, 32, 32, device=self.device)
+        eP = torch.zeros(batch_size, 3, 32, 32, device=self.device)
 
 
         eLIF_srb1_2_U1 = eLIF_srb1_2_S1 = torch.zeros(batch_size, self.scale, 32, 32, device=self.device)
@@ -625,19 +625,19 @@ class SOLO_PreactResNet18(nn.Module):
                 acc_mem += boost1
 
         eP = self.eP(eP.detach(), x)
-        c1_out = surrogate.cTraceSwitch.apply(self.conv1(x).detach(), self.conv1(eP))
+        c1_out = surrogate.eP_switch.apply(self.conv1(x).detach(), self.conv1(eP))
 
 
         srb1_1_mem, srb1_1_spike = self.LIF1(srb1_1_mem.detach(), srb1_1_spike.detach(), self.SRB1_bn1(c1_out))
 
         eLIF_srb1_2_U1, eLIF_srb1_2_S1 = self.eLIF_2_1(eLIF_srb1_2_U1, eLIF_srb1_2_S1, srb1_1_spike * 1 + eLIF_srb1_2_S2_prev * 1)
         eLIF_srb1_2_U2, eLIF_srb1_2_S2 = self.eLIF_2_2(eLIF_srb1_2_U2, eLIF_srb1_2_S2, eLIF_srb1_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB1_conv1(srb1_1_spike).detach(), self.SRB1_conv1(surrogate.eLIF_fc.apply(eLIF_srb1_2_S1, eLIF_srb1_2_S2, srb1_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB1_conv1(srb1_1_spike).detach(), self.SRB1_conv1(surrogate.eLIF_fc.apply(eLIF_srb1_2_S1, eLIF_srb1_2_S2, srb1_1_spike)))
         srb1_2_mem, srb1_2_spike = self.LIF2(srb1_2_mem.detach(), srb1_2_spike.detach(), self.SRB1_bn2(I_in))
 
         eLIF_srb2_1_U1, eLIF_srb2_1_S1 = self.eLIF_3_1(eLIF_srb2_1_U1, eLIF_srb2_1_S1, srb1_2_spike * 1 + eLIF_srb2_1_S2_prev * 1)
         eLIF_srb2_1_U2, eLIF_srb2_1_S2 = self.eLIF_3_2(eLIF_srb2_1_U2, eLIF_srb2_1_S2, eLIF_srb2_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB1_conv2(srb1_2_spike).detach(), self.SRB1_conv2(surrogate.eLIF_fc.apply(eLIF_srb2_1_S1, eLIF_srb2_1_S2, srb1_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB1_conv2(srb1_2_spike).detach(), self.SRB1_conv2(surrogate.eLIF_fc.apply(eLIF_srb2_1_S1, eLIF_srb2_1_S2, srb1_2_spike)))
 
         srb1_out = I_in + self.SRB1_skip(c1_out)
 
@@ -645,12 +645,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb2_2_U1, eLIF_srb2_2_S1 = self.eLIF_4_1(eLIF_srb2_2_U1, eLIF_srb2_2_S1, srb2_1_spike * 1 + eLIF_srb2_2_S2_prev * 1)
         eLIF_srb2_2_U2, eLIF_srb2_2_S2 = self.eLIF_4_2(eLIF_srb2_2_U2, eLIF_srb2_2_S2, eLIF_srb2_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB2_conv1(srb2_1_spike).detach(), self.SRB2_conv1(surrogate.eLIF_fc.apply(eLIF_srb2_2_S1, eLIF_srb2_2_S2, srb2_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB2_conv1(srb2_1_spike).detach(), self.SRB2_conv1(surrogate.eLIF_fc.apply(eLIF_srb2_2_S1, eLIF_srb2_2_S2, srb2_1_spike)))
         srb2_2_mem, srb2_2_spike = self.LIF4(srb2_2_mem.detach(), srb2_2_spike.detach(), self.SRB2_bn2(I_in))
 
         eLIF_srb3_1_U1, eLIF_srb3_1_S1 = self.eLIF_5_1(eLIF_srb3_1_U1, eLIF_srb3_1_S1, srb2_2_spike * 1 + eLIF_srb3_1_S2_prev * 1)
         eLIF_srb3_1_U2, eLIF_srb3_1_S2 = self.eLIF_5_2(eLIF_srb3_1_U2, eLIF_srb3_1_S2, eLIF_srb3_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB2_conv2(srb2_2_spike).detach(), self.SRB2_conv2(surrogate.eLIF_fc.apply(eLIF_srb3_1_S1, eLIF_srb3_1_S2, srb2_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB2_conv2(srb2_2_spike).detach(), self.SRB2_conv2(surrogate.eLIF_fc.apply(eLIF_srb3_1_S1, eLIF_srb3_1_S2, srb2_2_spike)))
 
         srb2_out = I_in + self.SRB2_skip(srb1_out)
 
@@ -658,12 +658,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb3_2_U1, eLIF_srb3_2_S1 = self.eLIF_6_1(eLIF_srb3_2_U1, eLIF_srb3_2_S1, srb3_1_spike * 1 + eLIF_srb3_2_S2_prev * 1)
         eLIF_srb3_2_U2, eLIF_srb3_2_S2 = self.eLIF_6_2(eLIF_srb3_2_U2, eLIF_srb3_2_S2, eLIF_srb3_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB3_conv1(srb3_1_spike).detach(), self.SRB3_conv1(surrogate.eLIF_fc.apply(eLIF_srb3_2_S1, eLIF_srb3_2_S2, srb3_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB3_conv1(srb3_1_spike).detach(), self.SRB3_conv1(surrogate.eLIF_fc.apply(eLIF_srb3_2_S1, eLIF_srb3_2_S2, srb3_1_spike)))
         srb3_2_mem, srb3_2_spike = self.LIF6(srb3_2_mem.detach(), srb3_2_spike.detach(), self.SRB3_bn2(I_in))
 
         eLIF_srb4_1_U1, eLIF_srb4_1_S1 = self.eLIF_7_1(eLIF_srb4_1_U1, eLIF_srb4_1_S1, srb3_2_spike * 1 + eLIF_srb4_1_S2_prev * 1)
         eLIF_srb4_1_U2, eLIF_srb4_1_S2 = self.eLIF_7_2(eLIF_srb4_1_U2, eLIF_srb4_1_S2, eLIF_srb4_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB3_conv2(srb3_2_spike).detach(), self.SRB3_conv2(surrogate.eLIF_fc.apply(eLIF_srb4_1_S1, eLIF_srb4_1_S2, srb3_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB3_conv2(srb3_2_spike).detach(), self.SRB3_conv2(surrogate.eLIF_fc.apply(eLIF_srb4_1_S1, eLIF_srb4_1_S2, srb3_2_spike)))
 
         srb3_out = I_in + self.SRB3_skip(srb2_out)
 
@@ -671,12 +671,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb4_2_U1, eLIF_srb4_2_S1 = self.eLIF_8_1(eLIF_srb4_2_U1, eLIF_srb4_2_S1, srb4_1_spike * 1 + eLIF_srb4_2_S2_prev * 1)
         eLIF_srb4_2_U2, eLIF_srb4_2_S2 = self.eLIF_8_2(eLIF_srb4_2_U2, eLIF_srb4_2_S2, eLIF_srb4_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB4_conv1(srb4_1_spike).detach(), self.SRB4_conv1(surrogate.eLIF_fc.apply(eLIF_srb4_2_S1, eLIF_srb4_2_S2, srb4_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB4_conv1(srb4_1_spike).detach(), self.SRB4_conv1(surrogate.eLIF_fc.apply(eLIF_srb4_2_S1, eLIF_srb4_2_S2, srb4_1_spike)))
         srb4_2_mem, srb4_2_spike = self.LIF8(srb4_2_mem.detach(), srb4_2_spike.detach(), self.SRB4_bn2(I_in))
 
         eLIF_srb5_1_U1, eLIF_srb5_1_S1 = self.eLIF_9_1(eLIF_srb5_1_U1, eLIF_srb5_1_S1, srb4_2_spike * 1 + eLIF_srb5_1_S2_prev * 1)
         eLIF_srb5_1_U2, eLIF_srb5_1_S2 = self.eLIF_9_2(eLIF_srb5_1_U2, eLIF_srb5_1_S2, eLIF_srb5_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB4_conv2(srb4_2_spike).detach(), self.SRB4_conv2(surrogate.eLIF_fc.apply(eLIF_srb5_1_S1, eLIF_srb5_1_S2, srb4_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB4_conv2(srb4_2_spike).detach(), self.SRB4_conv2(surrogate.eLIF_fc.apply(eLIF_srb5_1_S1, eLIF_srb5_1_S2, srb4_2_spike)))
 
         srb4_out = I_in +self.SRB4_skip(srb3_out)
 
@@ -684,12 +684,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb5_2_U1, eLIF_srb5_2_S1 = self.eLIF_10_1(eLIF_srb5_2_U1, eLIF_srb5_2_S1, srb5_1_spike * 1 + eLIF_srb5_2_S2_prev * 1)
         eLIF_srb5_2_U2, eLIF_srb5_2_S2 = self.eLIF_10_2(eLIF_srb5_2_U2, eLIF_srb5_2_S2, eLIF_srb5_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB5_conv1(srb5_1_spike).detach(), self.SRB5_conv1(surrogate.eLIF_fc.apply(eLIF_srb5_2_S1, eLIF_srb5_2_S2, srb5_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB5_conv1(srb5_1_spike).detach(), self.SRB5_conv1(surrogate.eLIF_fc.apply(eLIF_srb5_2_S1, eLIF_srb5_2_S2, srb5_1_spike)))
         srb5_2_mem, srb5_2_spike = self.LIF10(srb5_2_mem.detach(), srb5_2_spike.detach(), self.SRB5_bn2(I_in))
 
         eLIF_srb6_1_U1, eLIF_srb6_1_S1 = self.eLIF_11_1(eLIF_srb6_1_U1, eLIF_srb6_1_S1, srb5_2_spike * 1 + eLIF_srb6_1_S2_prev * 1)
         eLIF_srb6_1_U2, eLIF_srb6_1_S2 = self.eLIF_11_2(eLIF_srb6_1_U2, eLIF_srb6_1_S2, eLIF_srb6_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB5_conv2(srb5_2_spike).detach(), self.SRB5_conv2(surrogate.eLIF_fc.apply(eLIF_srb6_1_S1, eLIF_srb6_1_S2, srb5_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB5_conv2(srb5_2_spike).detach(), self.SRB5_conv2(surrogate.eLIF_fc.apply(eLIF_srb6_1_S1, eLIF_srb6_1_S2, srb5_2_spike)))
 
         srb5_out = I_in + self.SRB5_skip(srb4_out)
 
@@ -697,12 +697,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb6_2_U1, eLIF_srb6_2_S1 = self.eLIF_12_1(eLIF_srb6_2_U1, eLIF_srb6_2_S1, srb6_1_spike * 1 + eLIF_srb6_2_S2_prev * 1)
         eLIF_srb6_2_U2, eLIF_srb6_2_S2 = self.eLIF_12_2(eLIF_srb6_2_U2, eLIF_srb6_2_S2, eLIF_srb6_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB6_conv1(srb6_1_spike).detach(), self.SRB6_conv1(surrogate.eLIF_fc.apply(eLIF_srb6_2_S1, eLIF_srb6_2_S2, srb6_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB6_conv1(srb6_1_spike).detach(), self.SRB6_conv1(surrogate.eLIF_fc.apply(eLIF_srb6_2_S1, eLIF_srb6_2_S2, srb6_1_spike)))
         srb6_2_mem, srb6_2_spike = self.LIF12(srb6_2_mem.detach(), srb6_2_spike.detach(), self.SRB6_bn2(I_in))
 
         eLIF_srb7_1_U1, eLIF_srb7_1_S1 = self.eLIF_13_1(eLIF_srb7_1_U1, eLIF_srb7_1_S1, srb6_2_spike * 1 + eLIF_srb7_1_S2_prev * 1)
         eLIF_srb7_1_U2, eLIF_srb7_1_S2 = self.eLIF_13_2(eLIF_srb7_1_U2, eLIF_srb7_1_S2, eLIF_srb7_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB6_conv2(srb6_2_spike).detach(), self.SRB6_conv2(surrogate.eLIF_fc.apply(eLIF_srb7_1_S1, eLIF_srb7_1_S2, srb6_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB6_conv2(srb6_2_spike).detach(), self.SRB6_conv2(surrogate.eLIF_fc.apply(eLIF_srb7_1_S1, eLIF_srb7_1_S2, srb6_2_spike)))
 
         srb6_out = I_in + self.SRB6_skip(srb5_out)
 
@@ -710,12 +710,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb7_2_U1, eLIF_srb7_2_S1 = self.eLIF_14_1(eLIF_srb7_2_U1, eLIF_srb7_2_S1, srb7_1_spike * 1 + eLIF_srb7_2_S2_prev * 1)
         eLIF_srb7_2_U2, eLIF_srb7_2_S2 = self.eLIF_14_2(eLIF_srb7_2_U2, eLIF_srb7_2_S2, eLIF_srb7_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB7_conv1(srb7_1_spike).detach(), self.SRB7_conv1(surrogate.eLIF_fc.apply(eLIF_srb7_2_S1, eLIF_srb7_2_S2, srb7_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB7_conv1(srb7_1_spike).detach(), self.SRB7_conv1(surrogate.eLIF_fc.apply(eLIF_srb7_2_S1, eLIF_srb7_2_S2, srb7_1_spike)))
         srb7_2_mem, srb7_2_spike = self.LIF14(srb7_2_mem.detach(), srb7_2_spike.detach(), self.SRB7_bn2(I_in))
 
         eLIF_srb8_1_U1, eLIF_srb8_1_S1 = self.eLIF_15_1(eLIF_srb8_1_U1, eLIF_srb8_1_S1, srb7_2_spike * 1 + eLIF_srb8_1_S2_prev * 1)
         eLIF_srb8_1_U2, eLIF_srb8_1_S2 = self.eLIF_15_2(eLIF_srb8_1_U2, eLIF_srb8_1_S2, eLIF_srb8_1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB7_conv2(srb7_2_spike).detach(), self.SRB7_conv2(surrogate.eLIF_fc.apply(eLIF_srb8_1_S1, eLIF_srb8_1_S2, srb7_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB7_conv2(srb7_2_spike).detach(), self.SRB7_conv2(surrogate.eLIF_fc.apply(eLIF_srb8_1_S1, eLIF_srb8_1_S2, srb7_2_spike)))
 
         srb7_out = I_in + self.SRB7_skip(srb6_out)
 
@@ -723,12 +723,12 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_srb8_2_U1, eLIF_srb8_2_S1 = self.eLIF_16_1(eLIF_srb8_2_U1, eLIF_srb8_2_S1, srb8_1_spike * 1 + eLIF_srb8_2_S2_prev * 1)
         eLIF_srb8_2_U2, eLIF_srb8_2_S2 = self.eLIF_16_2(eLIF_srb8_2_U2, eLIF_srb8_2_S2, eLIF_srb8_2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB8_conv1(srb8_1_spike).detach(), self.SRB8_conv1(surrogate.eLIF_fc.apply(eLIF_srb8_2_S1, eLIF_srb8_2_S2, srb8_1_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB8_conv1(srb8_1_spike).detach(), self.SRB8_conv1(surrogate.eLIF_fc.apply(eLIF_srb8_2_S1, eLIF_srb8_2_S2, srb8_1_spike)))
         srb8_2_mem, srb8_2_spike = self.LIF16(srb8_2_mem.detach(), srb8_2_spike.detach(), self.SRB8_bn2(I_in))
 
         eLIF_h1_U1, eLIF_h1_S1 = self.eLIF_17_1(eLIF_h1_U1, eLIF_h1_S1, srb8_2_spike * 1 + eLIF_h1_S2_prev * 1)
         eLIF_h1_U2, eLIF_h1_S2 = self.eLIF_17_2(eLIF_h1_U2, eLIF_h1_S2, eLIF_h1_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.SRB8_conv2(srb8_2_spike).detach(), self.SRB8_conv2(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, srb8_2_spike)))
+        I_in = surrogate.eP_switch.apply(self.SRB8_conv2(srb8_2_spike).detach(), self.SRB8_conv2(surrogate.eLIF_fc.apply(eLIF_h1_S1, eLIF_h1_S2, srb8_2_spike)))
 
         srb8_out = I_in + self.SRB8_skip(srb7_out)
 
@@ -736,7 +736,7 @@ class SOLO_PreactResNet18(nn.Module):
 
         eLIF_h2_U1, eLIF_h2_S1 = self.eLIF_18_1(eLIF_h2_U1, eLIF_h2_S1, h1_spike * 1 + eLIF_h2_S2_prev * 1)
         eLIF_h2_U2, eLIF_h2_S2 = self.eLIF_18_2(eLIF_h2_U2, eLIF_h2_S2, eLIF_h2_S1_prev * 1)
-        I_in = surrogate.cTraceSwitch.apply(self.fc1(self.pool1(h1_spike).view(batch_size, -1)).detach(), self.fc1(self.pool1(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_spike)).view(batch_size, -1)))
+        I_in = surrogate.eP_switch.apply(self.fc1(self.pool1(h1_spike).view(batch_size, -1)).detach(), self.fc1(self.pool1(surrogate.eLIF_fc.apply(eLIF_h2_S1, eLIF_h2_S2, h1_spike)).view(batch_size, -1)))
         h2_mem, h2_spike = self.LIF18(h2_mem.detach(), h2_spike.detach(), I_in)
         boost1 = self.boost1(self.fc2(h2_spike).unsqueeze(1)).squeeze(1)
 

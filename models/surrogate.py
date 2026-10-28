@@ -35,7 +35,7 @@ class HeavisideBoxcarCall(nn.Module):
     def primitive_function(x: torch.Tensor, alpha):
         return x * alpha
 
-class ePClamp(torch.autograd.Function):
+class eP(torch.autograd.Function):
     @staticmethod
     def forward(ctx, eP, clamp_value):
         ctx.set_materialize_grads(False)
@@ -46,7 +46,7 @@ class ePClamp(torch.autograd.Function):
         grad_input = grad_output.clone()
         return grad_input, None
 
-class cTraceSwitch(torch.autograd.Function):
+class eP_switch(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input_spk_mul_w, input_spk_b_mul_w):
         ctx.set_materialize_grads(False)
@@ -94,14 +94,12 @@ class HeavisideCurrentBoxcarCall(nn.Module):
 class eLIF(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input, thresh):
-        ctx.save_for_backward(input)
-        ctx.thresh = thresh
         return input.gt(thresh).float()
 
     @staticmethod
     def backward(ctx, grad_output):
         grad_input = grad_output.clone()
-        return grad_input, None, None
+        return grad_input, None
 
 class Heaviside_eLIFCall(nn.Module):
     def __init__(self, thresh=1.0, alpha=1.0, spiking=True):

@@ -23,7 +23,9 @@ def portable(text: str) -> str:
 
 def public_names(text: str) -> str:
     renamed = text.replace("cTRACE", "eP").replace("TRACE", "eP").replace("LIF_current", "LIF_cSG")
-    return re.sub(r"\beU\b", "eP", renamed)
+    renamed = renamed.replace("ePClamp", "eP").replace("cTraceSwitch", "eP_switch")
+    renamed = re.sub(r"\beU\b", "eP", renamed)
+    return renamed.replace("eP = eS = torch.zeros", "eP = torch.zeros")
 
 
 def prune(text: str, attributes: set[str], locals_: set[str]) -> str:
@@ -123,8 +125,11 @@ def main() -> None:
                        "CurrentBoxcar", "HeavisideCurrentBoxcarCall", "eLIF",
                        "Heaviside_eLIFCall", "eLIF_fc"]
     surrogate = extract(args.solo_dir / "surrogate.py", surrogate_names)
-    surrogate = surrogate.replace('        return grad_input, None, None\n\n\nclass Heaviside_eLIFCall',
-                                  '        return grad_input, None\n\n\nclass Heaviside_eLIFCall')
+    original_elife = extract(args.solo_dir / "surrogate.py", ["eLIF"]).strip()
+    clean_elife = original_elife.replace('        ctx.save_for_backward(input)\n', '')
+    clean_elife = clean_elife.replace('        ctx.thresh = thresh\n', '')
+    clean_elife = clean_elife.replace('return grad_input, None, None', 'return grad_input, None')
+    surrogate = surrogate.replace(original_elife, clean_elife)
     surrogate = prune(surrogate, set(), set())
     (args.output / "surrogate.py").write_text('import torch\nimport torch.nn as nn\n\n' + public_names(surrogate))
     sources = [args.solo_dir / name for name in ["model.py", "model_current.py", "model_current_eLIFE.py", "surrogate.py"]]
