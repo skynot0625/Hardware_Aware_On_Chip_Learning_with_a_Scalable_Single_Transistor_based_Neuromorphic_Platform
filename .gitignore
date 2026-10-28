@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+data/
+runs/
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.zip
+*.pdf
+.env
