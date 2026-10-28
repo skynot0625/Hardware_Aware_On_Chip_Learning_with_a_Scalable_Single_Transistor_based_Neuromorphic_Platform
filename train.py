@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader, Subset
 
 from data import load_data
 from models import PreActResNet18, SHDELife
-from models.neurons import Surrogate
 
 
 def loss_for(scores: Tensor, labels: Tensor, dataset: str) -> Tensor:
@@ -70,6 +69,8 @@ def main() -> None:
         parser.error("epochs, scale, batch-size, threads and lr must be positive")
     if args.workers < 0 or (args.limit is not None and args.limit < 1):
         parser.error("workers must be nonnegative and limit must be positive")
+    if args.dataset == "shd" and args.scale != 1024:
+        parser.error("the original SHD implementation requires --scale 1024")
     if args.device == "cuda" and not torch.cuda.is_available():
         parser.error("CUDA requested but unavailable")
     if args.output.exists():
@@ -87,7 +88,7 @@ def main() -> None:
         splits = tuple(Subset(split, range(min(args.limit, len(split)))) for split in splits)
     loaders = [DataLoader(split, batch_size=args.batch_size, shuffle=index == 0,
                           num_workers=args.workers) for index, split in enumerate(splits)]
-    surrogate = Surrogate(args.surrogate)
+    surrogate = args.surrogate
     model = (SHDELife(scale=args.scale, surrogate=surrogate, elife=args.elife) if args.dataset == "shd" else
              PreActResNet18(scale=args.scale, elife=args.elife, surrogate=surrogate)).to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
