@@ -2,7 +2,7 @@
 
 import torch
 
-from models import model_Resenet_cSG_eLIFE as model_current_eLIFE, surrogate
+from models import model_ResNet18_cSG_eLIFE as model_current_eLIFE, surrogate
 
 
 def main() -> None:

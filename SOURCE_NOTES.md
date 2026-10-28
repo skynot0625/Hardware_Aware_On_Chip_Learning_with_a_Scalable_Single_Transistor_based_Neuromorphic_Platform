@@ -30,7 +30,7 @@ the surviving model computation. Shared SHD neuron helpers are in `shd_nodes.py`
 
 - ResNet SG/cSG: remove the unused `cTRACE_Node` and `LI_Node` classes,
   unused LI instance, and unused initial convolution-state allocation.
-- ResNet eLIFE: retain `cTRACE_Node` for the input trace; remove unused LI and
+- ResNet eLIFE: retain the input trace as `eP_Node` (eligible potential); remove unused LI and
   the unused first pair of clone instances.
 - SHD: remove intermediate `cTRACE_1`–`cTRACE_4` and their trace states, unused
   `fb`/`LIF_fb`/`LIF_rec` helpers, unused clone states, and unused thresholds.
@@ -48,10 +48,17 @@ when transferring checkpoints and investigate any missing active weights.
 
 `model_Arch1.py` uses the original `_x` variants with recurrent/residual
 connections and no feedback. `model_Arch2.py` uses the original four-feedback
-variants. `_pure` selects the version without eLIFE, and `_current_` selects cSG.
-The historical `smnist` class names are retained, but these supplied classes
-are actually SHD-specialized (700 input channels, 20 steps, 20 classes).
+variants. Public names are `Arch1_SG`, `Arch1_cSG`, `Arch1_SG_eLIFE`,
+`Arch1_cSG_eLIFE` and the corresponding `Arch2_*` names. In the original
+source, `_pure` denotes no eLIFE and `_current_` denotes cSG; `fb3_x` maps
+to Arch1 and `fb3` maps to Arch2. Despite their historical `smnist` names,
+these supplied classes are SHD-specialized (700 input channels, 20 steps, 20 classes).
 Neither filename implies that an F-MNIST or S-MNIST input adapter is included.
+
+Input trace identifiers are renamed from `cTRACE`/`eU` to `eP` (eligible
+potential). `eP_Node` and `eP_Node_SOLOplus` retain the original trace equations;
+this is a naming change, not removal of the input-gradient path. ResNet filenames
+uniformly use `model_ResNet18_*`.
 
 ## Retained source conventions
 

@@ -1,6 +1,7 @@
 # Architecture 2: recurrent/residual network with four output-feedback projections.
 # Dataset: SHD; input [B,20,700] or [B,20,1,700], output [B,20].
 # Paper small-network family: F-MNIST, S-MNIST, SHD. This file is SHD-specialized.
+# eP = eligible potential: input trace present only in eLIFE-enabled variants.
 # noqa: SIZE_OK - retain original explicit research forward methods.
 import torch
 import torch.nn as nn
@@ -11,23 +12,23 @@ import random
 import torch.nn.init as init
 from .shd_nodes import (
     LIF_Node_SOLOplus,
-    LIF_current_Node_SOLOplus,
+    LIF_cSG_Node_SOLOplus,
     htLIF_Node_SOLOplus,
-    htLIF_current_Node_SOLOplus,
-    cTRACE_Node_SOLOplus,
+    htLIF_cSG_Node_SOLOplus,
+    eP_Node_SOLOplus,
     eLIF_Node_SOLOplus,
 )
 
-class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
+class Arch2_cSG(nn.Module):
     def __init__(
         self,
         scale=1024,
         num_steps: int = 28,
         time_resolution=4,
         init_LIF_decay: float = 0.78,  # membrane decaying time constant
-        init_TRACE_decay: float = 0.78,
-        init_TRACE_a: float = 1,
-        init_TRACE_clamp_ceiling: float = 100,
+        init_eP_decay: float = 0.78,
+        init_eP_a: float = 1,
+        init_eP_clamp_ceiling: float = 100,
         subthresh=1.0,
         min_steps: int = 4,
     ):
@@ -39,7 +40,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
 
 
         self.fc = nn.Linear(700, self.scale, bias=False)
-        self.LIF = LIF_current_Node_SOLOplus(
+        self.LIF = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -47,7 +48,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         )
 
         self.fc1 = nn.Linear(self.scale, self.scale, bias=False)
-        self.LIF1 = htLIF_current_Node_SOLOplus(
+        self.LIF1 = htLIF_cSG_Node_SOLOplus(
             1024,
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
@@ -56,7 +57,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         )
 
         self.fc2 = nn.Linear(self.scale, self.scale, bias=False)
-        self.LIF2 = LIF_current_Node_SOLOplus(
+        self.LIF2 = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -64,7 +65,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         )
 
         self.fc3 = nn.Linear(self.scale, 1024, bias=False)
-        self.LIF3 = htLIF_current_Node_SOLOplus(
+        self.LIF3 = htLIF_cSG_Node_SOLOplus(
             1024,
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
@@ -76,7 +77,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         self.rec2rec = nn.Linear(1024, 1024, bias=False)
 
         self.rec2fc = nn.Linear(1024, 1024, bias=False)
-        self.LIF_out = LIF_current_Node_SOLOplus(
+        self.LIF_out = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -194,16 +195,16 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         return acc_mem / new_num_steps
 
 
-class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
+class Arch2_cSG_eLIFE(nn.Module):
     def __init__(
         self,
         scale=1024,
         num_steps: int = 28,
         time_resolution=4,
         init_LIF_decay: float = 0.78,  # membrane decaying time constant
-        init_TRACE_decay: float = 0.78,
-        init_TRACE_a: float = 1,
-        init_TRACE_clamp_ceiling: float = 100,
+        init_eP_decay: float = 0.78,
+        init_eP_a: float = 1,
+        init_eP_clamp_ceiling: float = 100,
         subthresh=1.0,
         min_steps: int = 4,
     ):
@@ -214,13 +215,13 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         self.min_steps = min_steps
 
 
-        self.cTRACE = cTRACE_Node_SOLOplus(
-            TRACE_decay=init_TRACE_decay,
-            TRACE_a_in=init_TRACE_a,
-            TRACE_clamp_ceiling=init_TRACE_clamp_ceiling,
+        self.eP = eP_Node_SOLOplus(
+            eP_decay=init_eP_decay,
+            eP_a_in=init_eP_a,
+            eP_clamp_ceiling=init_eP_clamp_ceiling,
         )
         self.fc = nn.Linear(700, self.scale, bias=False)
-        self.LIF = LIF_current_Node_SOLOplus(
+        self.LIF = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -240,7 +241,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
             ),
         )
         self.fc1 = nn.Linear(self.scale, self.scale, bias=False)
-        self.LIF1 = htLIF_current_Node_SOLOplus(
+        self.LIF1 = htLIF_cSG_Node_SOLOplus(
             1024,
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
@@ -261,7 +262,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
             ),
         )
         self.fc2 = nn.Linear(self.scale, self.scale, bias=False)
-        self.LIF2 = LIF_current_Node_SOLOplus(
+        self.LIF2 = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -281,7 +282,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
             ),
         )
         self.fc3 = nn.Linear(self.scale, 1024, bias=False)
-        self.LIF3 = htLIF_current_Node_SOLOplus(
+        self.LIF3 = htLIF_cSG_Node_SOLOplus(
             1024,
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
@@ -305,7 +306,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         self.rec2rec = nn.Linear(1024, 1024, bias=False)
 
         self.rec2fc = nn.Linear(1024, 1024, bias=False)
-        self.LIF_out = LIF_current_Node_SOLOplus(
+        self.LIF_out = LIF_cSG_Node_SOLOplus(
             LIF_decay=init_LIF_decay,
             surrogate_function=surrogate.HeavisideCurrentBoxcarCall(
                 thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True
@@ -349,7 +350,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         x = x.squeeze(2)       # (32, 20, 1, 700) → (32, 20, 700)
         x = x.permute(1, 0, 2) # (32, 20, 700) → (20, 32, 700)
 
-        eU = eS = torch.zeros(batch_size, 700, device=self.device)
+        eP = eS = torch.zeros(batch_size, 700, device=self.device)
         U = S = torch.zeros(batch_size, 1024, device=self.device)
         h1_U = h1_S = torch.zeros(batch_size, 1024, device=self.device)
         h2_U = h2_S = torch.zeros(batch_size, 1024, device=self.device)
@@ -396,7 +397,7 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         for step in range(init_step, last_step - 1):
             with torch.no_grad():
 
-                eU = self.cTRACE(eU.detach(), x[step])
+                eP = self.eP(eP.detach(), x[step])
                 U, S = self.LIF(U, S, self.fc(x[step]) + self.fb0(out_S))
 
                 eLIF_h1_U1, eLIF_h1_S1 = self.eLIF_1_1(eLIF_h1_U1, eLIF_h1_S1, S * 1 + eLIF_h1_S2_prev * 1)
@@ -436,8 +437,8 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
 
 
 
-        eU = self.cTRACE(eU.detach(), x[last_step])
-        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eU))
+        eP = self.eP(eP.detach(), x[last_step])
+        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
         I_in_fb0 = surrogate.cTraceSwitch.apply(self.fb0(out_S).detach(), self.fb0(surrogate.eLIF_fc.apply(eLIF_h5_S1, eLIF_h5_S2, out_S)))
         U, S = self.LIF(U.detach(), S.detach(), I_in + I_in_fb0)
 
@@ -478,16 +479,16 @@ class mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         return acc_mem / new_num_steps
 
 
-class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
+class Arch2_SG(nn.Module):
     def __init__(
         self,
         scale=1024,
         num_steps: int = 28,
         time_resolution=4,
         init_LIF_decay: float = 0.78,  # membrane decaying time constant
-        init_TRACE_decay: float = 0.78,
-        init_TRACE_a: float = 1,
-        init_TRACE_clamp_ceiling: float = 100,
+        init_eP_decay: float = 0.78,
+        init_eP_a: float = 1,
+        init_eP_clamp_ceiling: float = 100,
         subthresh=1.0,
         min_steps: int = 4,
     ):
@@ -654,16 +655,16 @@ class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_pure(nn.Module):
         return acc_mem / new_num_steps
 
 
-class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3(nn.Module):
+class Arch2_SG_eLIFE(nn.Module):
     def __init__(
         self,
         scale=1024,
         num_steps: int = 28,
         time_resolution=4,
         init_LIF_decay: float = 0.78,  # membrane decaying time constant
-        init_TRACE_decay: float = 0.78,
-        init_TRACE_a: float = 1,
-        init_TRACE_clamp_ceiling: float = 100,
+        init_eP_decay: float = 0.78,
+        init_eP_a: float = 1,
+        init_eP_clamp_ceiling: float = 100,
         subthresh=1.0,
         min_steps: int = 4,
     ):
@@ -674,10 +675,10 @@ class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         self.min_steps = min_steps
 
 
-        self.cTRACE = cTRACE_Node_SOLOplus(
-            TRACE_decay=init_TRACE_decay,
-            TRACE_a_in=init_TRACE_a,
-            TRACE_clamp_ceiling=init_TRACE_clamp_ceiling,
+        self.eP = eP_Node_SOLOplus(
+            eP_decay=init_eP_decay,
+            eP_a_in=init_eP_a,
+            eP_clamp_ceiling=init_eP_clamp_ceiling,
         )
         self.fc = nn.Linear(700, self.scale, bias=False)
         self.LIF = LIF_Node_SOLOplus(
@@ -830,7 +831,7 @@ class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         x = x.squeeze(2)       # (32, 20, 1, 700) → (32, 20, 700)
         x = x.permute(1, 0, 2) # (32, 20, 700) → (20, 32, 700)
 
-        eU = eS = torch.zeros(batch_size, 700, device=self.device)
+        eP = eS = torch.zeros(batch_size, 700, device=self.device)
         U = S = torch.zeros(batch_size, 1024, device=self.device)
         h1_U = h1_S = torch.zeros(batch_size, 1024, device=self.device)
         h2_U = h2_S = torch.zeros(batch_size, 1024, device=self.device)
@@ -879,7 +880,7 @@ class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3(nn.Module):
         for step in range(init_step, last_step - 1):
             with torch.no_grad():
 
-                eU = self.cTRACE(eU.detach(), x[step])
+                eP = self.eP(eP.detach(), x[step])
                 U, S = self.LIF(U, S, self.fc(x[step]) + self.fb0(out_S))
 
                 eLIF_h1_U1, eLIF_h1_S1 = self.eLIF_1_1(eLIF_h1_U1, eLIF_h1_S1, S * 1 + eLIF_h1_S2_prev * 1)
@@ -926,8 +927,8 @@ class mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3(nn.Module):
 
 
 
-        eU = self.cTRACE(eU.detach(), x[last_step])
-        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eU))
+        eP = self.eP(eP.detach(), x[last_step])
+        I_in = surrogate.cTraceSwitch.apply(self.fc(x[last_step]).detach(), self.fc(eP))
         I_in_fb0 = surrogate.cTraceSwitch.apply(self.fb0(out_S).detach(), self.fb0(surrogate.eLIF_fc.apply(eLIF_h5_S1, eLIF_h5_S2, out_S)))
         U, S = self.LIF(U.detach(), S.detach(), I_in + I_in_fb0)
 

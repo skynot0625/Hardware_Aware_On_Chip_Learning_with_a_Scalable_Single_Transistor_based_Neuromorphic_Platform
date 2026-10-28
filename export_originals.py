@@ -4,6 +4,7 @@ import argparse
 import ast
 import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -18,6 +19,11 @@ def extract(path: Path, names: list[str]) -> str:
 def portable(text: str) -> str:
     text = text.replace('        self.to("cuda" if torch.cuda.is_available() else "cpu")\n', '')
     return text.replace('.to("cuda" if torch.cuda.is_available() else "cpu")', '')
+
+
+def public_names(text: str) -> str:
+    renamed = text.replace("cTRACE", "eP").replace("TRACE", "eP").replace("LIF_current", "LIF_cSG")
+    return re.sub(r"\beU\b", "eP", renamed)
 
 
 def prune(text: str, attributes: set[str], locals_: set[str]) -> str:
@@ -71,24 +77,27 @@ def main() -> None:
     resnet_data = ('# Dataset: CIFAR-10 in this release; input [B,3,32,32], output [B,10].\n'
                    '# Paper ResNet family: CIFAR-10/100, CIFAR10DVS, DVS128Gesture.\n'
                    '# Event-dataset frontends and benchmark runners are not included here.\n')
-    resnet_names = {"model.py": "model_Resnet18_SG.py",
-                    "model_current.py": "model_Resnet_cSG.py",
-                    "model_current_eLIFE.py": "model_Resenet_cSG_eLIFE.py"}
+    resnet_names = {"model.py": "model_ResNet18_SG.py",
+                    "model_current.py": "model_ResNet18_cSG.py",
+                    "model_current_eLIFE.py": "model_ResNet18_cSG_eLIFE.py"}
     for filename, destination in resnet_names.items():
         names = ["LIF_Node"] + (["cTRACE_Node", "eLIF_Node_SOLOplus"] if "eLIFE" in filename else [])
         body = portable(extract(args.solo_dir / filename, names + ["SOLO_PreactResNet18"]))
         if "eLIFE" in filename:
             body = body.replace('        LIF_U = I_in\n', '')
         body = prune(body, {"LI", "eLIF_1_1", "eLIF_1_2"}, {"c1_mem", "c1_spike"})
+        body = public_names(body)
+        if "eLIFE" in filename:
+            body = '# eP = eligible potential: input trace used for first-layer weight gradients.\n' + body
         (args.output / destination).write_text(resnet_data + header + body)
         if "eLIFE" in filename:
             sg = body.replace('surrogate.HeavisideCurrentBoxcarCall', 'surrogate.HeavisideBoxcarCall')
             sg = sg.replace('self.surrogate_function(LIF_U, I_in)', 'self.surrogate_function(LIF_U)')
-            (args.output / "model_Resnet_SG_eLIFE.py").write_text(resnet_data + header + sg)
+            (args.output / "model_ResNet18_SG_eLIFE.py").write_text(resnet_data + header + sg)
     shd_helpers = ["LIF_Node_SOLOplus", "LIF_current_Node_SOLOplus", "htLIF_Node_SOLOplus",
                    "htLIF_current_Node_SOLOplus", "cTRACE_Node_SOLOplus", "eLIF_Node_SOLOplus"]
     nodes = prune(portable(extract(args.analog_model, shd_helpers)), set(), set())
-    (args.output / "shd_nodes.py").write_text('# Shared neuron helpers for the SHD-specialized Arch1/Arch2 examples.\n' + header + nodes)
+    (args.output / "shd_nodes.py").write_text('# Shared neuron helpers for the SHD-specialized Arch1/Arch2 examples.\n# eP = eligible potential; its input trace is retained for learning.\n' + header + public_names(nodes))
     for architecture in (1, 2):
         body = ''
         for sg in (False, True):
@@ -99,13 +108,16 @@ def main() -> None:
                 source = portable(extract(args.analog_model, [name]))
                 source = source.replace('AnalogLinear(', 'nn.Linear(').replace(', rpu_config=rpu_config', '')
                 source = source.replace('        rpu_config = None,\n', '')
-                body += clean_shd(source, elife, architecture == 2) + '\n\n'
+                public_class = f'Arch{architecture}_' + ('SG' if sg else 'cSG') + ('_eLIFE' if elife else '')
+                source = clean_shd(source, elife, architecture == 2).replace(f'class {name}(', f'class {public_class}(')
+                body += public_names(source) + '\n\n'
         data_header = (f'# Architecture {architecture}: recurrent/residual network '
                        + ('without feedback.\n' if architecture == 1 else 'with four output-feedback projections.\n')
                        + '# Dataset: SHD; input [B,20,700] or [B,20,1,700], output [B,20].\n'
                        + '# Paper small-network family: F-MNIST, S-MNIST, SHD. This file is SHD-specialized.\n')
+        data_header += '# eP = eligible potential: input trace present only in eLIFE-enabled variants.\n'
         imports = ('import random\nimport torch.nn.init as init\nfrom .shd_nodes import (\n'
-                   + ''.join(f'    {name},\n' for name in shd_helpers) + ')\n\n')
+                   + ''.join(f'    {public_names(name)},\n' for name in shd_helpers) + ')\n\n')
         (args.output / f"model_Arch{architecture}.py").write_text(data_header + header + imports + body.rstrip() + '\n')
     surrogate_names = ["Boxcar", "HeavisideBoxcarCall", "cTRACEClamp", "cTraceSwitch",
                        "CurrentBoxcar", "HeavisideCurrentBoxcarCall", "eLIF",
@@ -114,7 +126,7 @@ def main() -> None:
     surrogate = surrogate.replace('        return grad_input, None, None\n\n\nclass Heaviside_eLIFCall',
                                   '        return grad_input, None\n\n\nclass Heaviside_eLIFCall')
     surrogate = prune(surrogate, set(), set())
-    (args.output / "surrogate.py").write_text('import torch\nimport torch.nn as nn\n\n' + surrogate)
+    (args.output / "surrogate.py").write_text('import torch\nimport torch.nn as nn\n\n' + public_names(surrogate))
     sources = [args.solo_dir / name for name in ["model.py", "model_current.py", "model_current_eLIFE.py", "surrogate.py"]]
     sources.append(args.analog_model)
     manifest = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}

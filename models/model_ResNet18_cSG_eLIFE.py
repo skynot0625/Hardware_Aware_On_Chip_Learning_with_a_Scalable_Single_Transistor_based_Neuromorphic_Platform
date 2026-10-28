@@ -7,9 +7,10 @@ import torch.nn as nn
 from . import surrogate
 
 
+# eP = eligible potential: input trace used for first-layer weight gradients.
 class LIF_Node(nn.Module):
     def __init__(
-        self, LIF_tau: torch.Tensor, surrogate_function=surrogate.HeavisideBoxcarCall
+        self, LIF_tau: torch.Tensor, surrogate_function=surrogate.HeavisideCurrentBoxcarCall
     ):
         super().__init__()
         self.LIF_decay = torch.sigmoid(torch.tensor(LIF_tau))
@@ -22,19 +23,19 @@ class LIF_Node(nn.Module):
         I_in: torch.Tensor,
     ):
         LIF_U = self.LIF_decay * LIF_U * (1 - S_before) + I_in
-        LIF_S = self.surrogate_function(LIF_U)
+        LIF_S = self.surrogate_function(LIF_U, I_in)
         return LIF_U, LIF_S
 
-class cTRACE_Node(nn.Module):
-    def __init__(self, cTRACE_tau: torch.Tensor, cTRACE_clamp_value):
+class eP_Node(nn.Module):
+    def __init__(self, eP_tau: torch.Tensor, eP_clamp_value):
         super().__init__()
 
-        self.cTRACE_decay = torch.sigmoid(torch.tensor(cTRACE_tau))
-        self.clamp_value = cTRACE_clamp_value
+        self.eP_decay = torch.sigmoid(torch.tensor(eP_tau))
+        self.clamp_value = eP_clamp_value
 
     def forward(self, mem: torch.Tensor, spk_in: torch.Tensor):
-        mem =  self.cTRACE_decay * mem.detach() + spk_in
-        mem = surrogate.cTRACEClamp.apply(mem, self.clamp_value)
+        mem =  self.eP_decay * mem.detach() + spk_in
+        mem = surrogate.ePClamp.apply(mem, self.clamp_value)
 
         return mem
 
@@ -66,8 +67,8 @@ class SOLO_PreactResNet18(nn.Module):
         init_LI_tau: float =1.0,
         subthresh  = 0.5,
         num_classes = 10,
-        init_cTRACE_tau = 1,
-        init_cTRACE_clamp = 100,
+        init_eP_tau = 1,
+        init_eP_clamp = 100,
     ):
         super().__init__()
         self.num_steps = num_steps
@@ -76,13 +77,13 @@ class SOLO_PreactResNet18(nn.Module):
         self.num_classes = num_classes
 
         self.conv1 = nn.Conv2d(3, self.scale, 3, stride=1, padding=1, bias=False)
-        self.cTRACE = cTRACE_Node(cTRACE_tau=init_cTRACE_tau, cTRACE_clamp_value=init_cTRACE_clamp)
+        self.eP = eP_Node(eP_tau=init_eP_tau, eP_clamp_value=init_eP_clamp)
 
         self.SRB1_bn1 = nn.BatchNorm2d(self.scale)
-        self.LIF1 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF1 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB1_conv1 = nn.Conv2d(self.scale, self.scale, 3, stride=1, padding=1, bias=False)
         self.SRB1_bn2 = nn.BatchNorm2d(self.scale)
-        self.LIF2 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF2 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB1_conv2 = nn.Conv2d(self.scale, self.scale, 3, stride=1, padding=1, bias=False)
         self.SRB1_skip = nn.Conv2d(self.scale, self.scale, 1, stride=1, bias=False)
 
@@ -101,10 +102,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB2_bn1 = nn.BatchNorm2d(self.scale)
-        self.LIF3 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF3 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB2_conv1 = nn.Conv2d(self.scale, self.scale, 3, stride=1, padding=1, bias=False)
         self.SRB2_bn2 = nn.BatchNorm2d(self.scale)
-        self.LIF4 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF4 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB2_conv2 = nn.Conv2d(self.scale, self.scale, 3, stride=1, padding=1, bias=False)
         self.SRB2_skip = nn.Sequential(nn.BatchNorm2d(self.scale))
 
@@ -135,10 +136,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB3_bn1 = nn.BatchNorm2d(self.scale)
-        self.LIF5 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF5 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB3_conv1 = nn.Conv2d(self.scale, self.scale*2, 3, stride=2, padding=1, bias=False)
         self.SRB3_bn2 = nn.BatchNorm2d(self.scale*2)
-        self.LIF6 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF6 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB3_conv2 = nn.Conv2d(self.scale*2, self.scale*2, 3, stride=1, padding=1, bias=False)
         self.SRB3_skip = nn.Conv2d(self.scale, self.scale*2, 1, stride=2, bias=False)
 
@@ -169,10 +170,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB4_bn1 = nn.BatchNorm2d(self.scale*2)
-        self.LIF7 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF7 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB4_conv1 = nn.Conv2d(self.scale*2, self.scale*2, 3, stride=1, padding=1, bias=False)
         self.SRB4_bn2 = nn.BatchNorm2d(self.scale*2)
-        self.LIF8 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF8 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB4_conv2 = nn.Conv2d(self.scale*2, self.scale*2 , 3, stride=1, padding=1, bias=False)
         self.SRB4_skip = nn.Sequential(nn.BatchNorm2d(self.scale*2))
 
@@ -203,10 +204,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB5_bn1 = nn.BatchNorm2d(self.scale*2)
-        self.LIF9 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF9 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB5_conv1 = nn.Conv2d(self.scale*2, self.scale*4, 3, stride=2, padding=1, bias=False)
         self.SRB5_bn2 = nn.BatchNorm2d(self.scale*4)
-        self.LIF10 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF10 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB5_conv2 = nn.Conv2d(self.scale*4, self.scale*4, 3, stride=1, padding=1, bias=False)
         self.SRB5_skip = nn.Conv2d(self.scale*2, self.scale*4, 1, stride=2, bias=False)
 
@@ -237,10 +238,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB6_bn1 = nn.BatchNorm2d(self.scale*4)
-        self.LIF11 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF11 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB6_conv1 = nn.Conv2d(self.scale*4, self.scale*4, 3, stride=1, padding=1, bias=False)
         self.SRB6_bn2 = nn.BatchNorm2d(self.scale*4)
-        self.LIF12 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF12 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB6_conv2 = nn.Conv2d(self.scale*4, self.scale*4, 3, stride=1, padding=1, bias=False)
         self.SRB6_skip = nn.Sequential(nn.BatchNorm2d(self.scale*4))
 
@@ -271,10 +272,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB7_bn1 = nn.BatchNorm2d(self.scale*4)
-        self.LIF13 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF13 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB7_conv1 = nn.Conv2d(self.scale*4, self.scale*8, 3, stride=2, padding=1, bias=False)
         self.SRB7_bn2 = nn.BatchNorm2d(self.scale*8)
-        self.LIF14 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF14 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB7_conv2 = nn.Conv2d(self.scale*8, self.scale*8, 3, stride=1, padding=1, bias=False)
         self.SRB7_skip = nn.Conv2d(self.scale*4, self.scale*8, 1, stride=2, bias=False)
 
@@ -305,10 +306,10 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.SRB8_bn1 = nn.BatchNorm2d(self.scale*8)
-        self.LIF15 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF15 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB8_conv1 = nn.Conv2d(self.scale*8, self.scale*8, 3, stride=1, padding=1, bias=False)
         self.SRB8_bn2 = nn.BatchNorm2d(self.scale*8)
-        self.LIF16 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF16 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.SRB8_conv2 = nn.Conv2d(self.scale*8, self.scale*8, 3, stride=1, padding=1, bias=False)
         self.SRB8_skip = nn.Sequential(nn.BatchNorm2d(self.scale*8))
 
@@ -339,12 +340,12 @@ class SOLO_PreactResNet18(nn.Module):
         )
 
         self.bn1 = nn.BatchNorm2d(self.scale*8)
-        self.LIF17 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF17 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
         self.pool1 = nn.AvgPool2d(4)
 
         self.fc1 = nn.Linear(self.scale*8, num_classes*10, bias=False)
 
-        self.LIF18 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
+        self.LIF18 = LIF_Node(LIF_tau=init_LIF_tau, surrogate_function=surrogate.HeavisideCurrentBoxcarCall(thresh=1.0, subthresh=self.subthresh, alpha=1.0, spiking=True))
 
         self.fc2 = nn.Linear(self.num_classes*10, self.num_classes*10, bias=False)
 
@@ -403,7 +404,7 @@ class SOLO_PreactResNet18(nn.Module):
         boost1 = torch.zeros(batch_size, self.num_classes, device=self.device)
         acc_mem = torch.zeros(batch_size, self.num_classes, device=self.device)
 
-        eU = eS = torch.zeros(batch_size, 3, 32, 32, device=self.device)
+        eP = eS = torch.zeros(batch_size, 3, 32, 32, device=self.device)
 
 
         eLIF_srb1_2_U1 = eLIF_srb1_2_S1 = torch.zeros(batch_size, self.scale, 32, 32, device=self.device)
@@ -496,7 +497,7 @@ class SOLO_PreactResNet18(nn.Module):
 
         for step in range(self.num_steps-1):
             with torch.no_grad():
-                eU = self.cTRACE(eU.detach(), x)
+                eP = self.eP(eP.detach(), x)
                 c1_out = self.conv1(x)
 
                 srb1_1_mem, srb1_1_spike = self.LIF1(srb1_1_mem.detach(), srb1_1_spike.detach(), self.SRB1_bn1(c1_out))
@@ -623,8 +624,8 @@ class SOLO_PreactResNet18(nn.Module):
 
                 acc_mem += boost1
 
-        eU = self.cTRACE(eU.detach(), x)
-        c1_out = surrogate.cTraceSwitch.apply(self.conv1(x).detach(), self.conv1(eU))
+        eP = self.eP(eP.detach(), x)
+        c1_out = surrogate.cTraceSwitch.apply(self.conv1(x).detach(), self.conv1(eP))
 
 
         srb1_1_mem, srb1_1_spike = self.LIF1(srb1_1_mem.detach(), srb1_1_spike.detach(), self.SRB1_bn1(c1_out))

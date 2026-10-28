@@ -1,4 +1,5 @@
 # Shared neuron helpers for the SHD-specialized Arch1/Arch2 examples.
+# eP = eligible potential; its input trace is retained for learning.
 # noqa: SIZE_OK - retain original explicit research forward methods.
 import torch
 import torch.nn as nn
@@ -28,7 +29,7 @@ class LIF_Node_SOLOplus(nn.Module):
         LIF_S = self.surrogate_function(LIF_U)
         return LIF_U, LIF_S
 
-class LIF_current_Node_SOLOplus(nn.Module):
+class LIF_cSG_Node_SOLOplus(nn.Module):
     def __init__(
         self, LIF_decay: torch.Tensor, surrogate_function=surrogate.HeavisideCurrentBoxcarCall()
     ):
@@ -82,7 +83,7 @@ class htLIF_Node_SOLOplus(nn.Module):
         LIF_S = self.surrogate_function(LIF_U)
         return LIF_U, LIF_S
 
-class htLIF_current_Node_SOLOplus(nn.Module):
+class htLIF_cSG_Node_SOLOplus(nn.Module):
     def __init__(
         self, scale, LIF_decay: torch.Tensor, surrogate_function=surrogate.HeavisideCurrentBoxcarCall()
     ):
@@ -115,21 +116,21 @@ class htLIF_current_Node_SOLOplus(nn.Module):
         LIF_S = self.surrogate_function(LIF_U, I_in)
         return LIF_U, LIF_S
 
-class cTRACE_Node_SOLOplus(nn.Module):
+class eP_Node_SOLOplus(nn.Module):
     def __init__(
         self,
-        TRACE_decay: torch.Tensor,
-        TRACE_a_in: torch.Tensor,
-        TRACE_clamp_ceiling: torch.Tensor,
+        eP_decay: torch.Tensor,
+        eP_a_in: torch.Tensor,
+        eP_clamp_ceiling: torch.Tensor,
     ):
         super().__init__()
-        self.TRACE_decay = TRACE_decay
-        self.TRACE_a_in = TRACE_a_in
-        self.TRACE_clamp_ceiling = TRACE_clamp_ceiling
+        self.eP_decay = eP_decay
+        self.eP_a_in = eP_a_in
+        self.eP_clamp_ceiling = eP_clamp_ceiling
 
-    def forward(self, TRACE_U: torch.Tensor, S_in: torch.Tensor):
-        TRACE_U = self.TRACE_decay * TRACE_U + self.TRACE_a_in * S_in
-        return TRACE_U
+    def forward(self, eP_U: torch.Tensor, S_in: torch.Tensor):
+        eP_U = self.eP_decay * eP_U + self.eP_a_in * S_in
+        return eP_U
 
 class eLIF_Node_SOLOplus(nn.Module):
     def __init__(

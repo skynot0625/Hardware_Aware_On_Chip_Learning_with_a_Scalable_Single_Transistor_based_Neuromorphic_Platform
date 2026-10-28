@@ -35,11 +35,11 @@ class HeavisideBoxcarCall(nn.Module):
     def primitive_function(x: torch.Tensor, alpha):
         return x * alpha
 
-class cTRACEClamp(torch.autograd.Function):
+class ePClamp(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, eU, clamp_value):
+    def forward(ctx, eP, clamp_value):
         ctx.set_materialize_grads(False)
-        return torch.clamp(eU, max=clamp_value)
+        return torch.clamp(eP, max=clamp_value)
 
     @staticmethod
     def backward(ctx, grad_output):

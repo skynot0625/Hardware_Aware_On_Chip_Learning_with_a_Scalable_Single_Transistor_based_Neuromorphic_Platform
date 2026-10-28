@@ -22,8 +22,10 @@ def main() -> None:
                     else:
                         model = SHDELife(surrogate=sg, elife=elife, architecture=architecture)
                         assert hasattr(model, "fb0") == (architecture == "arch2")
-                        assert hasattr(model, "cTRACE") == elife
-                        assert not hasattr(model, "cTRACE_1")
+                        assert hasattr(model, "eP") == elife
+                        assert not hasattr(model, "cTRACE")
+                        expected_name = architecture.capitalize() + "_" + ("SG" if sg == "sg" else "cSG")
+                        assert type(model).__name__ == expected_name + ("_eLIFE" if elife else "")
                         sample = torch.poisson(torch.full((2, 20, 1, 700), 2.0))
                     model = model.to(device)
                     sample = sample.to(device)

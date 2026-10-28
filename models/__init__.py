@@ -3,16 +3,16 @@
 from torch import nn
 
 from . import model_Arch1, model_Arch2
-from . import model_Resnet18_SG, model_Resnet_cSG, model_Resnet_SG_eLIFE, model_Resenet_cSG_eLIFE
+from . import model_ResNet18_SG, model_ResNet18_cSG, model_ResNet18_SG_eLIFE, model_ResNet18_cSG_eLIFE
 
 
 def PreActResNet18(scale: int = 64, num_steps: int = 5, elife: bool = False,
                  surrogate: str = "csg") -> nn.Module:
     classes = {
-        ("sg", False): model_Resnet18_SG.SOLO_PreactResNet18,
-        ("csg", False): model_Resnet_cSG.SOLO_PreactResNet18,
-        ("sg", True): model_Resnet_SG_eLIFE.SOLO_PreactResNet18,
-        ("csg", True): model_Resenet_cSG_eLIFE.SOLO_PreactResNet18,
+        ("sg", False): model_ResNet18_SG.SOLO_PreactResNet18,
+        ("csg", False): model_ResNet18_cSG.SOLO_PreactResNet18,
+        ("sg", True): model_ResNet18_SG_eLIFE.SOLO_PreactResNet18,
+        ("csg", True): model_ResNet18_cSG_eLIFE.SOLO_PreactResNet18,
     }
     if (surrogate, elife) not in classes or scale < 1 or num_steps < 1:
         raise ValueError("require sg/csg, positive scale and positive num_steps")
@@ -25,14 +25,14 @@ def SHDELife(scale: int = 1024, num_steps: int = 20, min_steps: int = 4,
     if scale != 1024 or num_steps != 20 or not 2 <= min_steps <= 20:
         raise ValueError("original SHD classes require scale=1024, num_steps=20 and 2<=min_steps<=20")
     classes = {
-        ("arch1", "sg", False): model_Arch1.mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_x_pure,
-        ("arch1", "csg", False): model_Arch1.mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_x_pure,
-        ("arch1", "sg", True): model_Arch1.mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_x,
-        ("arch1", "csg", True): model_Arch1.mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_x,
-        ("arch2", "sg", False): model_Arch2.mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3_pure,
-        ("arch2", "csg", False): model_Arch2.mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3_pure,
-        ("arch2", "sg", True): model_Arch2.mlp4_SOLOplus_smnist_RES_RSNN_ht_res_fb3,
-        ("arch2", "csg", True): model_Arch2.mlp4_SOLOplus_current_smnist_RES_RSNN_ht_res_fb3,
+        ("arch1", "sg", False): model_Arch1.Arch1_SG,
+        ("arch1", "csg", False): model_Arch1.Arch1_cSG,
+        ("arch1", "sg", True): model_Arch1.Arch1_SG_eLIFE,
+        ("arch1", "csg", True): model_Arch1.Arch1_cSG_eLIFE,
+        ("arch2", "sg", False): model_Arch2.Arch2_SG,
+        ("arch2", "csg", False): model_Arch2.Arch2_cSG,
+        ("arch2", "sg", True): model_Arch2.Arch2_SG_eLIFE,
+        ("arch2", "csg", True): model_Arch2.Arch2_cSG_eLIFE,
     }
     if (architecture, surrogate, elife) not in classes:
         raise ValueError("require architecture arch1/arch2 and surrogate sg/csg")
